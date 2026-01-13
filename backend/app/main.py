@@ -98,15 +98,16 @@ cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://local
 cors_origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
 # Add CORS middleware
+# TEMPORARY: Allow all origins for debugging
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins temporarily for debugging
+    allow_credentials=False,  # Must be False when using wildcard origins
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allow all headers (Authorization, Content-Type, etc.)
 )
 
-logger.info(f"CORS enabled for origins: {cors_origins}")
+logger.info(f"CORS enabled for ALL origins (debugging mode)")
 
 # ============================================
 # Exception Handlers
@@ -222,7 +223,7 @@ async def health_check() -> dict:
 # API Routers
 # ============================================
 
-# Mount authentication router
+# Mount user profile router (handles Better Auth integration)
 app.include_router(auth.router, prefix="/api/auth")
 
 # Mount todos router

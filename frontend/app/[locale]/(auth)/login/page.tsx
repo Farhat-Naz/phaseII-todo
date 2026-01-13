@@ -6,7 +6,9 @@ import { LoginForm } from '@/components/features/auth/LoginForm';
 import { Card } from '@/components/ui/Card';
 import { LanguageSwitcher } from '@/components/features/shared/LanguageSwitcher';
 
-export async function generateMetadata({ params: { locale } }: { params: { locale: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  // Await params in Next.js 15+
+  const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'auth' });
 
   return {
@@ -15,7 +17,10 @@ export async function generateMetadata({ params: { locale } }: { params: { local
   };
 }
 
-export default function LoginPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function LoginPage({ params }: { params: Promise<{ locale: string }> }) {
+  // Await params in Next.js 15+
+  const { locale } = await params;
+
   return (
     <div className={`min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12 px-4 sm:px-6 lg:px-8 ${locale === 'ur' ? 'font-urdu' : ''}`}>
       <div className="max-w-md w-full space-y-8">

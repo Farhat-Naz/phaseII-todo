@@ -2,24 +2,29 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, UserRegister, UserLogin, AuthToken } from '@/types/user';
 import { api, handleError } from '@/lib/api';
-import { setUserSession, getUserSession, clearAuthToken } from '@/lib/auth';
+import { setToken, removeToken, getToken } from '@/lib/auth';
+import { User } from '@/types/user';
 
 interface UseAuthReturn {
   user: User | null;
   loading: boolean;
   error: string | null;
-  register: (data: UserRegister) => Promise<void>;
-  login: (data: UserLogin) => Promise<void>;
-  logout: () => void;
-  refreshUser: () => Promise<void>;
+  register: (data: { email: string; password: string; name: string }) => Promise<void>;
+  login: (data: { email: string; password: string }, locale?: string) => Promise<void>;
+  logout: () => Promise<void>;
   clearError: () => void;
+}
+
+interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
 }
 
 /**
  * Authentication hook for managing user state and auth operations
- * Provides register, login, logout, and session management
+ * Provides register, login, logout, and session management with JWT tokens
  */
 export function useAuth(): UseAuthReturn {
   const [user, setUser] = useState<User | null>(null);
@@ -28,64 +33,50 @@ export function useAuth(): UseAuthReturn {
   const router = useRouter();
 
   /**
-   * Fetch current user from session or API
+   * Fetch current user from API
    */
-  const refreshUser = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
+  const fetchUser = useCallback(async () => {
     try {
-      // Check local session first
-      const session = getUserSession();
-      if (session) {
-        setUser(session.user);
+      const token = getToken();
+      if (!token) {
+        setUser(null);
         setLoading(false);
         return;
       }
 
-      // Fetch from API if no local session
-      const currentUser = await api.get<User>('/api/auth/me');
-      setUser(currentUser);
-
-      // Update session
-      setUserSession({
-        user: currentUser,
-        accessToken: '', // Token already in cookies
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-      });
+      const userData = await api.get<User>('/api/auth/me');
+      setUser(userData);
     } catch (err) {
-      // User not authenticated, clear state
+      // Token might be invalid or expired
+      removeToken();
       setUser(null);
-      clearAuthToken();
-      setError(null); // Don't show error on initial load
     } finally {
       setLoading(false);
     }
   }, []);
 
   /**
+   * Load user on mount if token exists
+   */
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
+
+  /**
    * Register new user
    */
   const register = useCallback(
-    async (data: UserRegister) => {
+    async (data: { email: string; password: string; name: string }) => {
       setLoading(true);
       setError(null);
 
       try {
-        const response = await api.post<AuthToken>('/api/auth/register', data, false);
+        // Register user
+        const response = await api.post<User>('/api/auth/register', data, false);
 
-        // Store session
-        setUserSession({
-          user: response.user,
-          accessToken: response.access_token,
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-        });
-
-        setUser(response.user);
-
-        // Redirect to dashboard
-        router.push('/dashboard');
-      } catch (err) {
+        // Now login to get token
+        await login({ email: data.email, password: data.password });
+      } catch (err: any) {
         const errorMessage = handleError(err);
         setError(errorMessage);
         throw err;
@@ -100,46 +91,39 @@ export function useAuth(): UseAuthReturn {
    * Login existing user
    */
   const login = useCallback(
-    async (data: UserLogin) => {
+    async (data: { email: string; password: string }, locale: string = 'en') => {
       setLoading(true);
       setError(null);
 
       try {
-        // FastAPI expects form data for OAuth2PasswordRequestForm
+        // FastAPI OAuth2 expects form data
         const formData = new URLSearchParams();
         formData.append('username', data.email);
         formData.append('password', data.password);
 
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/login`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: formData,
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'Invalid credentials');
-        }
-
-        const authData = await response.json() as AuthToken;
-
-        // Store session
-        setUserSession({
-          user: authData.user,
-          accessToken: authData.access_token,
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: formData,
         });
 
+        if (!response.ok) {
+          throw new Error('Login failed');
+        }
+
+        const authData: AuthResponse = await response.json();
+
+        // Store token
+        setToken(authData.access_token);
+
+        // Set user data from response
         setUser(authData.user);
 
-        // Redirect to dashboard
-        router.push('/dashboard');
-      } catch (err) {
+        // Redirect to dashboard with locale
+        router.push(`/${locale}`);
+      } catch (err: any) {
         const errorMessage = handleError(err);
         setError(errorMessage);
         throw err;
@@ -153,10 +137,14 @@ export function useAuth(): UseAuthReturn {
   /**
    * Logout user
    */
-  const logout = useCallback(() => {
-    clearAuthToken();
-    setUser(null);
-    router.push('/login');
+  const logout = useCallback(async () => {
+    try {
+      removeToken();
+      setUser(null);
+      router.push('/login');
+    } catch (err: any) {
+      setError(handleError(err));
+    }
   }, [router]);
 
   /**
@@ -166,13 +154,6 @@ export function useAuth(): UseAuthReturn {
     setError(null);
   }, []);
 
-  /**
-   * Load user on mount
-   */
-  useEffect(() => {
-    refreshUser();
-  }, [refreshUser]);
-
   return {
     user,
     loading,
@@ -180,7 +161,6 @@ export function useAuth(): UseAuthReturn {
     register,
     login,
     logout,
-    refreshUser,
     clearError,
   };
 }

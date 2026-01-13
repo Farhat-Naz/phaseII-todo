@@ -18,10 +18,16 @@ python-multipart==0.0.20  # Form data parsing
 
 # Environment and Configuration
 python-dotenv==1.0.1  # Load .env files
-pydantic==2.10.6  # Data validation
-pydantic-settings==2.7.1  # Settings management
+pydantic>=2.10.6  # Data validation (use installed version)
+pydantic-settings>=2.7.1  # Settings management
 
 # Development and Testing
 pytest==8.3.4
 pytest-asyncio==0.25.2
 httpx==0.28.1  # Async HTTP client for testing
+
+# Email Services
+sendgrid==6.11.0  # SendGrid email provider
+
+# Additional dependencies for file uploads and form handling
+# Already present: python-multipart==0.0.20

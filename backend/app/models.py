@@ -3,7 +3,10 @@ SQLModel database models for the todo application.
 
 This module defines the core database entities:
 - User: Authentication and account management
-- Todo: Task items owned by users (to be added in future tasks)
+- Todo: Task items owned by users
+- Session: Refresh token and session management
+- PasswordResetToken: Password reset flow
+- EmailVerificationToken: Email verification flow
 
 All models use UUID primary keys and include created_at/updated_at timestamps.
 """
@@ -30,16 +33,22 @@ class User(SQLModel, table=True):
         email: Login email address (unique, indexed)
         hashed_password: Bcrypt-hashed password (never store plain text)
         name: User's display name (optional)
+        email_verified: Email verification status (default: False)
+        last_login: Last successful login timestamp (indexed)
         created_at: Account creation timestamp
         updated_at: Last update timestamp
 
     Relationships:
         todos: One-to-many relationship with Todo items
+        sessions: One-to-many relationship with Session records
+        password_reset_tokens: One-to-many relationship with PasswordResetToken
+        email_verification_tokens: One-to-many relationship with EmailVerificationToken
 
     Security:
         - Passwords are hashed with bcrypt (12 salt rounds)
         - Email is unique and indexed for fast login queries
         - UUID primary key for security and distributed systems
+        - Email verification prevents unauthorized access
     """
     __tablename__ = "user"
 
@@ -73,6 +82,21 @@ class User(SQLModel, table=True):
         description="User's display name"
     )
 
+    # Email Verification (US5)
+    email_verified: bool = Field(
+        default=False,
+        nullable=False,
+        description="Email verification status (default: False)"
+    )
+
+    # Session Tracking (US4)
+    last_login: Optional[datetime] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Last successful login timestamp (indexed for queries)"
+    )
+
     # Timestamps
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
@@ -91,6 +115,18 @@ class User(SQLModel, table=True):
         back_populates="owner",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+    sessions: List["Session"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    password_reset_tokens: List["PasswordResetToken"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    email_verification_tokens: List["EmailVerificationToken"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
     def verify_password(self, plain_password: str) -> bool:
         """
@@ -101,8 +137,14 @@ class User(SQLModel, table=True):
 
         Returns:
             True if password matches, False otherwise
+
+        Note:
+            Truncates password to 72 bytes to match the hashing behavior.
         """
-        return pwd_context.verify(plain_password, self.hashed_password)
+        # Truncate password to 72 bytes for bcrypt compatibility
+        password_bytes = plain_password.encode('utf-8')[:72]
+        truncated_password = password_bytes.decode('utf-8', errors='ignore')
+        return pwd_context.verify(truncated_password, self.hashed_password)
 
     @staticmethod
     def hash_password(plain_password: str) -> str:
@@ -114,8 +156,14 @@ class User(SQLModel, table=True):
 
         Returns:
             Bcrypt-hashed password string
+
+        Note:
+            Bcrypt has a 72-byte limit on passwords. Passwords are truncated
+            to 72 bytes before hashing to avoid compatibility issues.
         """
-        return pwd_context.hash(plain_password)
+        # Truncate password to 72 bytes for bcrypt compatibility
+        password_bytes = plain_password.encode('utf-8')[:72]
+        return pwd_context.hash(password_bytes.decode('utf-8', errors='ignore'))
 
     class Config:
         """SQLModel configuration"""
@@ -123,6 +171,253 @@ class User(SQLModel, table=True):
             "example": {
                 "email": "user@example.com",
                 "name": "John Doe",
+                "email_verified": False,
+            }
+        }
+
+
+class Session(SQLModel, table=True):
+    """
+    Session database model for refresh token management (US1).
+
+    Attributes:
+        id: Unique identifier (UUID, auto-generated)
+        user_id: Owner of the session (foreign key to users.id)
+        refresh_token_hash: Bcrypt-hashed refresh token for security
+        expires_at: Token expiration timestamp (indexed)
+        created_at: Session creation timestamp
+        last_activity: Last activity timestamp for session tracking
+        ip_address: Client IP address (max 45 chars for IPv6)
+        user_agent: Client user agent string for device identification
+
+    Relationships:
+        user: Many-to-one relationship with User
+
+    Security:
+        - Refresh tokens are hashed with bcrypt (never store plain text)
+        - Expired sessions are automatically invalid
+        - All queries MUST filter by user_id
+        - CASCADE delete when user is deleted
+
+    Performance:
+        - user_id indexed for fast user-scoped queries
+        - expires_at indexed for cleanup of expired sessions
+    """
+    __tablename__ = "session"
+
+    # Primary Key
+    id: UUID = Field(
+        default_factory=uuid4,
+        primary_key=True,
+        nullable=False,
+        description="Unique session identifier"
+    )
+
+    # Foreign Key to User
+    user_id: UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        index=True,
+        description="Owner of the session (foreign key to users.id, CASCADE on delete)"
+    )
+
+    # Token Management
+    refresh_token_hash: str = Field(
+        max_length=255,
+        nullable=False,
+        description="Bcrypt-hashed refresh token (never plain text)"
+    )
+
+    # Session Metadata
+    expires_at: datetime = Field(
+        nullable=False,
+        index=True,
+        description="Token expiration timestamp (indexed for cleanup)"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False,
+        description="Session creation timestamp"
+    )
+    last_activity: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False,
+        description="Last activity timestamp for session tracking"
+    )
+
+    # Device Tracking
+    ip_address: str = Field(
+        max_length=45,  # IPv6 max length
+        nullable=False,
+        description="Client IP address (max 45 chars for IPv6)"
+    )
+    user_agent: str = Field(
+        sa_column=sa.Column(sa.Text, nullable=False),
+        description="Client user agent string for device identification"
+    )
+
+    # Relationships
+    user: Optional[User] = Relationship(back_populates="sessions")
+
+    class Config:
+        """SQLModel configuration"""
+        json_schema_extra = {
+            "example": {
+                "ip_address": "192.168.1.1",
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            }
+        }
+
+
+class PasswordResetToken(SQLModel, table=True):
+    """
+    PasswordResetToken database model for password reset flow (US2).
+
+    Attributes:
+        id: Unique identifier (UUID, auto-generated)
+        user_id: Owner of the token (foreign key to users.id)
+        token_hash: Bcrypt-hashed token for security
+        expires_at: Token expiration timestamp (indexed, typically 24 hours)
+        created_at: Token creation timestamp
+        used: Token usage status (default: False)
+
+    Relationships:
+        user: Many-to-one relationship with User
+
+    Security:
+        - Tokens are hashed with bcrypt (never store plain text)
+        - Tokens expire after 24 hours
+        - Tokens can only be used once (used=True after use)
+        - All tokens invalidated when password changes
+        - CASCADE delete when user is deleted
+
+    Performance:
+        - user_id indexed for fast user-scoped queries
+        - expires_at indexed for cleanup of expired tokens
+    """
+    __tablename__ = "password_reset_token"
+
+    # Primary Key
+    id: UUID = Field(
+        default_factory=uuid4,
+        primary_key=True,
+        nullable=False,
+        description="Unique token identifier"
+    )
+
+    # Foreign Key to User
+    user_id: UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        index=True,
+        description="Owner of the token (foreign key to users.id, CASCADE on delete)"
+    )
+
+    # Token Management
+    token_hash: str = Field(
+        max_length=255,
+        nullable=False,
+        description="Bcrypt-hashed token (never plain text)"
+    )
+
+    # Token Metadata
+    expires_at: datetime = Field(
+        nullable=False,
+        index=True,
+        description="Token expiration timestamp (indexed for cleanup, typically 24 hours)"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False,
+        description="Token creation timestamp"
+    )
+    used: bool = Field(
+        default=False,
+        nullable=False,
+        description="Token usage status (default: False, set to True after use)"
+    )
+
+    # Relationships
+    user: Optional[User] = Relationship(back_populates="password_reset_tokens")
+
+    class Config:
+        """SQLModel configuration"""
+        json_schema_extra = {
+            "example": {
+                "used": False,
+            }
+        }
+
+
+class EmailVerificationToken(SQLModel, table=True):
+    """
+    EmailVerificationToken database model for email verification flow (US3).
+
+    Attributes:
+        id: Unique identifier (UUID, auto-generated)
+        user_id: Owner of the token (foreign key to users.id)
+        token_hash: Bcrypt-hashed token for security
+        expires_at: Token expiration timestamp (indexed, typically 24 hours)
+        created_at: Token creation timestamp
+
+    Relationships:
+        user: Many-to-one relationship with User
+
+    Security:
+        - Tokens are hashed with bcrypt (never store plain text)
+        - Tokens expire after 24 hours
+        - Token deleted after successful verification
+        - CASCADE delete when user is deleted
+
+    Performance:
+        - user_id indexed for fast user-scoped queries
+        - expires_at indexed for cleanup of expired tokens
+    """
+    __tablename__ = "email_verification_token"
+
+    # Primary Key
+    id: UUID = Field(
+        default_factory=uuid4,
+        primary_key=True,
+        nullable=False,
+        description="Unique token identifier"
+    )
+
+    # Foreign Key to User
+    user_id: UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        index=True,
+        description="Owner of the token (foreign key to users.id, CASCADE on delete)"
+    )
+
+    # Token Management
+    token_hash: str = Field(
+        max_length=255,
+        nullable=False,
+        description="Bcrypt-hashed token (never plain text)"
+    )
+
+    # Token Metadata
+    expires_at: datetime = Field(
+        nullable=False,
+        index=True,
+        description="Token expiration timestamp (indexed for cleanup, typically 24 hours)"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False,
+        description="Token creation timestamp"
+    )
+
+    # Relationships
+    user: Optional[User] = Relationship(back_populates="email_verification_tokens")
+
+    class Config:
+        """SQLModel configuration"""
+        json_schema_extra = {
+            "example": {
+                "expires_at": "2026-01-14T00:00:00Z",
             }
         }
 

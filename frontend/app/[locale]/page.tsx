@@ -1,11 +1,13 @@
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { getTranslations } from 'next-intl/server';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LanguageSwitcher } from '@/components/features/shared/LanguageSwitcher';
 
-export default function HomePage({ params: { locale } }: { params: { locale: string } }) {
-  const t = useTranslations();
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
+  // Await params in Next.js 15+
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">

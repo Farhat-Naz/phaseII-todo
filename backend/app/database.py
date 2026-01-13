@@ -42,30 +42,43 @@ if not DATABASE_URL:
         "Please set it to your Neon PostgreSQL connection string."
     )
 
-# Ensure SSL mode is configured for Neon
-if "sslmode" not in DATABASE_URL:
-    separator = "&" if "?" in DATABASE_URL else "?"
-    DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
-    logger.info("Added sslmode=require to DATABASE_URL for Neon compatibility")
+# Detect database type (SQLite vs PostgreSQL)
+is_sqlite = DATABASE_URL.startswith("sqlite")
 
-# Create SQLModel engine with Neon Serverless PostgreSQL optimizations
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,  # Set to True for SQL query logging in development
-    pool_pre_ping=True,  # Verify connections before using (critical for serverless)
-    pool_size=5,  # Number of persistent connections to maintain
-    max_overflow=10,  # Max additional connections when pool is exhausted
-    pool_recycle=3600,  # Recycle connections after 1 hour (3600 seconds)
-    connect_args={
-        "connect_timeout": 10,  # Connection timeout in seconds
-        "options": "-c timezone=utc",  # Use UTC timezone
-    },
-)
+# Configure engine based on database type
+if is_sqlite:
+    # SQLite configuration (for local development/testing)
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,  # Set to True for SQL query logging
+        connect_args={"check_same_thread": False},  # Allow multi-threading
+    )
+    logger.info("Database engine created for SQLite (local development)")
+else:
+    # PostgreSQL configuration (for production with Neon)
+    # Ensure SSL mode is configured for Neon
+    if "sslmode" not in DATABASE_URL:
+        separator = "&" if "?" in DATABASE_URL else "?"
+        DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
+        logger.info("Added sslmode=require to DATABASE_URL for Neon compatibility")
 
-logger.info(
-    "Database engine created with connection pooling: "
-    f"pool_size=5, max_overflow=10, pool_recycle=3600s"
-)
+    # Create SQLModel engine with Neon Serverless PostgreSQL optimizations
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,  # Set to True for SQL query logging in development
+        pool_pre_ping=True,  # Verify connections before using (critical for serverless)
+        pool_size=5,  # Number of persistent connections to maintain
+        max_overflow=10,  # Max additional connections when pool is exhausted
+        pool_recycle=3600,  # Recycle connections after 1 hour (3600 seconds)
+        connect_args={
+            "connect_timeout": 10,  # Connection timeout in seconds
+            "options": "-c timezone=utc",  # Use UTC timezone
+        },
+    )
+    logger.info(
+        "Database engine created with connection pooling: "
+        f"pool_size=5, max_overflow=10, pool_recycle=3600s"
+    )
 
 
 def create_db_and_tables() -> None:

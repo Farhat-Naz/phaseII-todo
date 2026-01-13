@@ -434,3 +434,273 @@ class TodoPublic(BaseModel):
             ]
         }
     }
+
+
+# ============================================
+# Auth Enhancement Schemas (US1-US7)
+# ============================================
+
+
+class RefreshTokenRequest(BaseModel):
+    """
+    Refresh token request schema (US1).
+
+    Note: In cookie-based auth, refresh token is extracted from cookie,
+    not from request body. This schema is for non-cookie clients.
+    """
+    refresh_token: str = Field(
+        ...,
+        description="JWT refresh token",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                }
+            ]
+        }
+    }
+
+
+class RefreshTokenResponse(BaseModel):
+    """
+    Refresh token response schema (US1).
+
+    Note: In cookie-based auth, tokens are set in HTTP-only cookies,
+    not returned in response body. This schema is for non-cookie clients.
+    """
+    access_token: str = Field(
+        ...,
+        description="New JWT access token",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+    )
+    refresh_token: str = Field(
+        ...,
+        description="New JWT refresh token (rotated)",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
+    )
+    token_type: str = Field(
+        default="bearer",
+        description="Token type (always 'bearer')"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "token_type": "bearer"
+                }
+            ]
+        }
+    }
+
+
+class SessionPublic(BaseModel):
+    """
+    Session public response schema (US4).
+
+    Represents an active session with device information.
+    """
+    id: UUID = Field(
+        ...,
+        description="Session identifier",
+        examples=["123e4567-e89b-12d3-a456-426614174000"]
+    )
+    created_at: datetime = Field(
+        ...,
+        description="Session creation timestamp (UTC)",
+        examples=["2024-01-15T10:30:00Z"]
+    )
+    last_activity: datetime = Field(
+        ...,
+        description="Last activity timestamp (UTC)",
+        examples=["2024-01-15T14:45:00Z"]
+    )
+    ip_address: str = Field(
+        ...,
+        description="Client IP address",
+        examples=["192.168.1.1"]
+    )
+    user_agent: str = Field(
+        ...,
+        description="Client user agent string",
+        examples=["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"]
+    )
+    is_current: bool = Field(
+        ...,
+        description="Is this the current session?",
+        examples=[True]
+    )
+
+    model_config = {
+        "from_attributes": True,
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "last_activity": "2024-01-15T14:45:00Z",
+                    "ip_address": "192.168.1.1",
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "is_current": True
+                }
+            ]
+        }
+    }
+
+
+class PasswordResetRequest(BaseModel):
+    """
+    Password reset request schema (US2).
+
+    Used for /forgot-password endpoint to initiate password reset.
+    """
+    email: EmailStr = Field(
+        ...,
+        description="User email address",
+        examples=["user@example.com"]
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "email": "user@example.com"
+                }
+            ]
+        }
+    }
+
+
+class PasswordResetConfirm(BaseModel):
+    """
+    Password reset confirmation schema (US2).
+
+    Used for /reset-password endpoint to complete password reset.
+    """
+    token: str = Field(
+        ...,
+        min_length=1,
+        description="Password reset token from email",
+        examples=["abc123def456"]
+    )
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        description="New password (min 8 chars, 1 uppercase, 1 lowercase, 1 number)",
+        examples=["NewSecurePass123"]
+    )
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        """
+        Validate password complexity requirements.
+
+        Requirements:
+        - At least 8 characters (enforced by Field min_length)
+        - At least 1 uppercase letter
+        - At least 1 lowercase letter
+        - At least 1 number
+        """
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least 1 uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least 1 lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least 1 number")
+        return v
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "token": "abc123def456",
+                    "new_password": "NewSecurePass123"
+                }
+            ]
+        }
+    }
+
+
+class EmailVerificationRequest(BaseModel):
+    """
+    Email verification request schema (US3).
+
+    Used for /verify-email endpoint.
+    """
+    token: str = Field(
+        ...,
+        min_length=1,
+        description="Email verification token from email",
+        examples=["abc123def456"]
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "token": "abc123def456"
+                }
+            ]
+        }
+    }
+
+
+class ProfileUpdateRequest(BaseModel):
+    """
+    Profile update request schema (US7).
+
+    Allows updating name and email (email requires verification).
+    """
+    name: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="User's display name",
+        examples=["Jane Doe"]
+    )
+    email: Optional[EmailStr] = Field(
+        default=None,
+        description="New email address (requires verification)",
+        examples=["newemail@example.com"]
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "name": "Jane Doe",
+                    "email": "newemail@example.com"
+                }
+            ]
+        }
+    }
+
+
+class MessageResponse(BaseModel):
+    """
+    Generic message response schema.
+
+    Used for simple success/error messages.
+    """
+    message: str = Field(
+        ...,
+        description="Response message",
+        examples=["Operation completed successfully"]
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "message": "Operation completed successfully"
+                }
+            ]
+        }
+    }

@@ -1,32 +1,26 @@
 """
-Authentication endpoints for user registration, login, and profile access.
+Authentication endpoints for user registration and login.
 
-This module implements secure JWT-based authentication with:
-- User registration with email uniqueness validation
-- Login with credential verification
-- Protected route for getting current user profile
-
-Security Features:
-- Passwords are hashed with bcrypt (12 salt rounds)
-- JWT tokens with configurable expiration
-- Generic error messages to prevent user enumeration
-- Email uniqueness enforcement at database level
+This module provides endpoints for:
+- User registration (POST /register)
+- User login with JWT tokens (POST /login)
+- Getting current authenticated user profile (GET /me)
 
 Endpoints:
-- POST /api/auth/register - Create new user account
-- POST /api/auth/login - Authenticate and get JWT token
+- POST /api/auth/register - Register new user
+- POST /api/auth/login - Login and receive JWT token
 - GET /api/auth/me - Get current authenticated user profile
 """
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from typing import Annotated
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserRegister, UserLogin, Token, UserPublic
-from app.dependencies import get_current_user, CurrentUser
-# Placeholder import - will be implemented by auth-config-specialist agent
-from app.auth import create_access_token
+from app.schemas import UserRegister, UserPublic, Token
+from app.dependencies import CurrentUser
+from app.auth import create_access_token, hash_password, verify_password
 
 # Create router with tags for API documentation
 router = APIRouter(
@@ -40,24 +34,21 @@ router = APIRouter(
 
 @router.post(
     "/register",
-    response_model=Token,
+    response_model=UserPublic,
     status_code=status.HTTP_201_CREATED,
     summary="Register new user",
-    description="Create a new user account with email, password, and name. "
-                "Email must be unique. Password must meet complexity requirements.",
+    description="Create a new user account with email, password, and name.",
     responses={
         201: {
-            "description": "User successfully registered",
+            "description": "User registered successfully",
             "content": {
                 "application/json": {
                     "example": {
-                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                        "token_type": "bearer",
-                        "user": {
-                            "id": "123e4567-e89b-12d3-a456-426614174000",
-                            "email": "user@example.com",
-                            "name": "John Doe"
-                        }
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "email": "john.doe@example.com",
+                        "name": "John Doe",
+                        "created_at": "2024-01-15T10:30:00Z",
+                        "updated_at": "2024-01-15T10:30:00Z"
                     }
                 }
             }
@@ -75,62 +66,42 @@ router = APIRouter(
 async def register(
     user_data: UserRegister,
     db: Annotated[Session, Depends(get_db)]
-) -> Token:
+) -> User:
     """
-    Register a new user account.
-
-    Process:
-    1. Validate email uniqueness
-    2. Hash password with bcrypt
-    3. Create user record in database
-    4. Generate JWT access token
-    5. Return token and user data
+    Register a new user.
 
     Args:
-        user_data: Registration data (email, password, name)
+        user_data: User registration data (email, password, name)
         db: Database session dependency
 
     Returns:
-        Token: JWT token and public user data
+        User: Created user object (password excluded)
 
     Raises:
         HTTPException 400: If email is already registered
-        HTTPException 422: If validation fails (automatic from Pydantic)
+        HTTPException 422: If validation fails
     """
     # Check if email already exists
-    statement = select(User).where(User.email == user_data.email)
-    existing_user = db.exec(statement).first()
-
+    existing_user = db.exec(select(User).where(User.email == user_data.email)).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
 
-    # Hash password using User model's static method
-    hashed_password = User.hash_password(user_data.password)
-
-    # Create new user
+    # Create new user with hashed password
+    hashed_password = hash_password(user_data.password)
     new_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
         name=user_data.name
     )
 
-    # Save to database
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    # Generate JWT access token
-    access_token = create_access_token(data={"sub": str(new_user.id)})
-
-    # Return token and user data
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserPublic.model_validate(new_user)
-    )
+    return new_user
 
 
 @router.post(
@@ -138,7 +109,7 @@ async def register(
     response_model=Token,
     status_code=status.HTTP_200_OK,
     summary="Login user",
-    description="Authenticate with email and password. Returns JWT token on success.",
+    description="Authenticate user and receive JWT access token.",
     responses={
         200: {
             "description": "Login successful",
@@ -146,12 +117,7 @@ async def register(
                 "application/json": {
                     "example": {
                         "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                        "token_type": "bearer",
-                        "user": {
-                            "id": "123e4567-e89b-12d3-a456-426614174000",
-                            "email": "user@example.com",
-                            "name": "John Doe"
-                        }
+                        "token_type": "bearer"
                     }
                 }
             }
@@ -160,59 +126,44 @@ async def register(
             "description": "Invalid credentials",
             "content": {
                 "application/json": {
-                    "example": {"detail": "Invalid credentials"}
+                    "example": {"detail": "Incorrect email or password"}
                 }
             }
         },
     }
 )
 async def login(
-    credentials: UserLogin,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[Session, Depends(get_db)]
 ) -> Token:
     """
-    Authenticate user with email and password.
-
-    Security:
-    - Returns generic "Invalid credentials" message for both:
-      - Email not found
-      - Incorrect password
-    - This prevents user enumeration attacks
-
-    Process:
-    1. Query user by email
-    2. Verify password hash
-    3. Generate JWT access token
-    4. Return token and user data
+    Login user and return JWT access token.
 
     Args:
-        credentials: Login credentials (email, password)
+        form_data: OAuth2 form data with username (email) and password
         db: Database session dependency
 
     Returns:
-        Token: JWT token and public user data
+        Token: JWT access token and token type
 
     Raises:
-        HTTPException 401: If email not found or password incorrect
-        HTTPException 422: If validation fails (automatic from Pydantic)
+        HTTPException 401: If credentials are invalid
     """
-    # Query user by email
-    statement = select(User).where(User.email == credentials.email)
-    user = db.exec(statement).first()
+    # Find user by email (username field contains email)
+    user = db.exec(select(User).where(User.email == form_data.username)).first()
 
-    # Check if user exists and password is correct
-    # Use generic error message to prevent user enumeration
-    if not user or not user.verify_password(credentials.password):
+    # Verify user exists and password is correct
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Generate JWT access token
+    # Create access token with user ID
     access_token = create_access_token(data={"sub": str(user.id)})
 
-    # Return token and user data
+    # Return token with user data
     return Token(
         access_token=access_token,
         token_type="bearer",
@@ -225,7 +176,7 @@ async def login(
     response_model=UserPublic,
     status_code=status.HTTP_200_OK,
     summary="Get current user",
-    description="Get the authenticated user's profile information. Requires valid JWT token.",
+    description="Get the authenticated user's profile information.",
     responses={
         200: {
             "description": "Current user profile",
@@ -234,7 +185,9 @@ async def login(
                     "example": {
                         "id": "123e4567-e89b-12d3-a456-426614174000",
                         "email": "user@example.com",
-                        "name": "John Doe"
+                        "name": "John Doe",
+                        "created_at": "2024-01-15T10:30:00Z",
+                        "updated_at": "2024-01-15T10:30:00Z"
                     }
                 }
             }
@@ -253,13 +206,6 @@ async def get_me(current_user: CurrentUser) -> UserPublic:
     """
     Get the current authenticated user's profile.
 
-    This endpoint demonstrates the authentication dependency pattern.
-    The get_current_user dependency:
-    - Validates JWT token
-    - Verifies user exists in database
-    - Returns User model instance
-    - Raises 401 if token invalid or user not found
-
     Args:
         current_user: Authenticated user from JWT token (injected by dependency)
 
@@ -270,12 +216,3 @@ async def get_me(current_user: CurrentUser) -> UserPublic:
         HTTPException 401: If token is invalid, expired, or user not found
     """
     return UserPublic.model_validate(current_user)
-
-
-# Future endpoints:
-# - POST /auth/refresh - Refresh access token using refresh token
-# - POST /auth/logout - Invalidate tokens (requires token blacklist)
-# - POST /auth/forgot-password - Request password reset email
-# - POST /auth/reset-password - Reset password with token
-# - POST /auth/verify-email - Verify email address with token
-# - POST /auth/resend-verification - Resend verification email

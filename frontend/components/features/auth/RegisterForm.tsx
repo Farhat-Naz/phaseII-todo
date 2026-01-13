@@ -13,7 +13,11 @@ interface FormErrors {
   name?: string;
 }
 
-export function RegisterForm() {
+interface RegisterFormProps {
+  locale: string;
+}
+
+export function RegisterForm({ locale }: RegisterFormProps) {
   const { register, loading, error } = useAuth();
   const [formData, setFormData] = useState<UserRegister>({
     email: '',
@@ -41,6 +45,12 @@ export function RegisterForm() {
       errors.password = 'Password is required';
     } else if (formData.password.length < 8) {
       errors.password = 'Password must be at least 8 characters';
+    } else if (!/[A-Z]/.test(formData.password)) {
+      errors.password = 'Password must contain at least 1 uppercase letter';
+    } else if (!/[a-z]/.test(formData.password)) {
+      errors.password = 'Password must contain at least 1 lowercase letter';
+    } else if (!/\d/.test(formData.password)) {
+      errors.password = 'Password must contain at least 1 number';
     }
 
     // Name validation
@@ -140,7 +150,7 @@ export function RegisterForm() {
         value={formData.password}
         onChange={handleChange('password')}
         error={formErrors.password}
-        helperText="Minimum 8 characters"
+        helperText="At least 8 characters, 1 uppercase, 1 lowercase, 1 number"
         required
         autoComplete="new-password"
       />
@@ -160,7 +170,7 @@ export function RegisterForm() {
       <p className="text-center text-sm text-gray-600 dark:text-gray-400">
         Already have an account?{' '}
         <Link
-          href="/login"
+          href={`/${locale}/login`}
           className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
         >
           Sign in

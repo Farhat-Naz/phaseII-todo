@@ -12,7 +12,11 @@ interface FormErrors {
   password?: string;
 }
 
-export function LoginForm() {
+interface LoginFormProps {
+  locale: string;
+}
+
+export function LoginForm({ locale }: LoginFormProps) {
   const { login, loading, error } = useAuth();
   const [formData, setFormData] = useState<UserLogin>({
     email: '',
@@ -58,7 +62,7 @@ export function LoginForm() {
     }
 
     try {
-      await login(formData);
+      await login(formData, locale);
       // Navigation to dashboard is handled by useAuth hook
     } catch {
       // Error display is handled by useAuth hook
@@ -135,7 +139,7 @@ export function LoginForm() {
       <p className="text-center text-sm text-gray-600 dark:text-gray-400">
         Don&apos;t have an account?{' '}
         <Link
-          href="/register"
+          href={`/${locale}/register`}
           className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
         >
           Create account
