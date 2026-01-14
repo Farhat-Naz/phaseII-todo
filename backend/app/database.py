@@ -22,7 +22,7 @@ SSL Mode:
 from sqlmodel import Session, create_engine, SQLModel
 from sqlalchemy import text
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Optional
 import os
 import logging
 from dotenv import load_dotenv
@@ -33,52 +33,70 @@ load_dotenv()
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Database URL from environment variable
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Global engine instance (created lazily)
+_engine: Optional[object] = None
 
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL environment variable is not set. "
-        "Please set it to your Neon PostgreSQL connection string."
-    )
 
-# Detect database type (SQLite vs PostgreSQL)
-is_sqlite = DATABASE_URL.startswith("sqlite")
+def get_engine():
+    """
+    Get or create the database engine (lazy initialization for serverless).
 
-# Configure engine based on database type
-if is_sqlite:
-    # SQLite configuration (for local development/testing)
-    engine = create_engine(
-        DATABASE_URL,
-        echo=False,  # Set to True for SQL query logging
-        connect_args={"check_same_thread": False},  # Allow multi-threading
-    )
-    logger.info("Database engine created for SQLite (local development)")
-else:
-    # PostgreSQL configuration (for production with Neon)
-    # Ensure SSL mode is configured for Neon
-    if "sslmode" not in DATABASE_URL:
-        separator = "&" if "?" in DATABASE_URL else "?"
-        DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
-        logger.info("Added sslmode=require to DATABASE_URL for Neon compatibility")
+    This function creates the engine only when first called, preventing
+    database connection attempts during module import in serverless environments.
+    """
+    global _engine
 
-    # Create SQLModel engine with Neon Serverless PostgreSQL optimizations
-    engine = create_engine(
-        DATABASE_URL,
-        echo=False,  # Set to True for SQL query logging in development
-        pool_pre_ping=True,  # Verify connections before using (critical for serverless)
-        pool_size=5,  # Number of persistent connections to maintain
-        max_overflow=10,  # Max additional connections when pool is exhausted
-        pool_recycle=3600,  # Recycle connections after 1 hour (3600 seconds)
-        connect_args={
-            "connect_timeout": 10,  # Connection timeout in seconds
-            "options": "-c timezone=utc",  # Use UTC timezone
-        },
-    )
-    logger.info(
-        "Database engine created with connection pooling: "
-        f"pool_size=5, max_overflow=10, pool_recycle=3600s"
-    )
+    if _engine is not None:
+        return _engine
+
+    # Database URL from environment variable
+    DATABASE_URL = os.getenv("DATABASE_URL")
+
+    if not DATABASE_URL:
+        raise ValueError(
+            "DATABASE_URL environment variable is not set. "
+            "Please set it to your Neon PostgreSQL connection string."
+        )
+
+    # Detect database type (SQLite vs PostgreSQL)
+    is_sqlite = DATABASE_URL.startswith("sqlite")
+
+    # Configure engine based on database type
+    if is_sqlite:
+        # SQLite configuration (for local development/testing)
+        _engine = create_engine(
+            DATABASE_URL,
+            echo=False,  # Set to True for SQL query logging
+            connect_args={"check_same_thread": False},  # Allow multi-threading
+        )
+        logger.info("Database engine created for SQLite (local development)")
+    else:
+        # PostgreSQL configuration (for production with Neon)
+        # Ensure SSL mode is configured for Neon
+        if "sslmode" not in DATABASE_URL:
+            separator = "&" if "?" in DATABASE_URL else "?"
+            DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
+            logger.info("Added sslmode=require to DATABASE_URL for Neon compatibility")
+
+        # Create SQLModel engine with Neon Serverless PostgreSQL optimizations
+        _engine = create_engine(
+            DATABASE_URL,
+            echo=False,  # Set to True for SQL query logging in development
+            pool_pre_ping=True,  # Verify connections before using (critical for serverless)
+            pool_size=5,  # Number of persistent connections to maintain
+            max_overflow=10,  # Max additional connections when pool is exhausted
+            pool_recycle=3600,  # Recycle connections after 1 hour (3600 seconds)
+            connect_args={
+                "connect_timeout": 10,  # Connection timeout in seconds
+                "options": "-c timezone=utc",  # Use UTC timezone
+            },
+        )
+        logger.info(
+            "Database engine created with connection pooling: "
+            f"pool_size=5, max_overflow=10, pool_recycle=3600s"
+        )
+
+    return _engine
 
 
 def create_db_and_tables() -> None:
@@ -92,6 +110,7 @@ def create_db_and_tables() -> None:
         This creates tables if they don't exist but does NOT handle migrations.
         Always use Alembic for schema changes in production.
     """
+    engine = get_engine()
     SQLModel.metadata.create_all(engine)
     logger.info("Database tables created successfully")
 
@@ -112,6 +131,7 @@ def get_db() -> Generator[Session, None, None]:
             users = db.exec(select(User)).all()
             return users
     """
+    engine = get_engine()
     with Session(engine) as session:
         try:
             yield session
@@ -136,6 +156,7 @@ def get_session() -> Generator[Session, None, None]:
             db.add(user)
             db.commit()
     """
+    engine = get_engine()
     with Session(engine) as session:
         try:
             yield session
@@ -157,6 +178,7 @@ def test_connection() -> bool:
         Exception: If connection fails (for diagnostic purposes)
     """
     try:
+        engine = get_engine()
         with Session(engine) as session:
             # Execute a simple query to verify connection
             session.exec(text("SELECT 1"))
@@ -183,6 +205,7 @@ def get_pool_status() -> dict:
             "total_connections": 7
         }
     """
+    engine = get_engine()
     pool = engine.pool
     return {
         "pool_size": pool.size(),
