@@ -27,8 +27,8 @@ import { PriorityBadge } from './PriorityBadge';
 interface TodoItemProps {
   todo: Todo;
   onToggle: (id: string) => Promise<void>;
-  onUpdate: (id: string, data: TodoUpdate) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onUpdate: (id: string, data: TodoUpdate) => Promise<Todo | null>;
+  onDelete: (id: string) => Promise<boolean>;
   onTogglePriority: (id: string, newPriority: PriorityLevel) => Promise<void>;
 }
 
@@ -51,7 +51,7 @@ export function TodoItem({ todo, onToggle, onUpdate, onDelete, onTogglePriority 
     try {
       await onUpdate(todo.id, {
         title: editTitle.trim(),
-        description: editDescription.trim() || null,
+        description: editDescription.trim() || undefined,
       });
       setIsEditing(false);
     } catch (error) {

@@ -34,7 +34,7 @@ interface UseTodosReturn {
   createTodo: (data: TodoCreate) => Promise<Todo | null>;
   updateTodo: (id: string, data: TodoUpdate) => Promise<Todo | null>;
   deleteTodo: (id: string) => Promise<boolean>;
-  toggleComplete: (id: string) => Promise<Todo | null>;
+  toggleComplete: (id: string) => Promise<void>;
   togglePriority: (id: string, newPriority: PriorityLevel) => Promise<void>;
 }
 
@@ -219,14 +219,14 @@ export function useTodos(): UseTodosReturn {
    * Toggle todo completion status
    * Convenience method for common operation
    */
-  const toggleComplete = useCallback(async (id: string): Promise<Todo | null> => {
+  const toggleComplete = useCallback(async (id: string): Promise<void> => {
     const todo = todos.find(t => t.id === id);
     if (!todo) {
       setError('Todo not found');
-      return null;
+      return;
     }
 
-    return updateTodo(id, { completed: !todo.completed });
+    await updateTodo(id, { completed: !todo.completed });
   }, [todos, updateTodo]);
 
   /**

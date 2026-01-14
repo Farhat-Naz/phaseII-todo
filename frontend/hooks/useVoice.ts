@@ -187,29 +187,17 @@ export function useVoice(): UseVoiceReturn {
 
         // Toggle completion
         try {
-          const updatedTodo = await toggleComplete(matchedTodo.id);
+          await toggleComplete(matchedTodo.id);
 
-          if (updatedTodo) {
-            const successMsg = language === 'en-US'
-              ? `Completed: "${matchedTodo.title}"`
-              : `مکمل کیا: "${matchedTodo.title}"`;
+          const successMsg = language === 'en-US'
+            ? `Completed: "${matchedTodo.title}"`
+            : `مکمل کیا: "${matchedTodo.title}"`;
 
-            setResult({
-              success: true,
-              message: successMsg,
-              todo: updatedTodo,
-            });
-          } else {
-            const errorMsg = language === 'en-US'
-              ? 'Failed to complete todo'
-              : 'ٹاسک مکمل کرنے میں ناکامی';
-
-            setError(errorMsg);
-            setResult({
-              success: false,
-              message: errorMsg,
-            });
-          }
+          setResult({
+            success: true,
+            message: successMsg,
+            todo: matchedTodo,
+          });
         } catch (err) {
           const errorMsg = language === 'en-US'
             ? 'Error completing todo'

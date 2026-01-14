@@ -13,8 +13,6 @@
  * Follows UI Skill patterns for accessible tab navigation.
  */
 
-import { PriorityLevel } from "@/types/todo";
-
 export type FilterType = "all" | "high";
 
 interface PriorityFilterProps {

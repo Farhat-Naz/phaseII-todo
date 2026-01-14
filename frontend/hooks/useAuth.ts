@@ -72,7 +72,7 @@ export function useAuth(): UseAuthReturn {
 
       try {
         // Register user
-        const response = await api.post<User>('/api/auth/register', data, false);
+        await api.post<User>('/api/auth/register', data, false);
 
         // Now login to get token
         await login({ email: data.email, password: data.password });
@@ -122,7 +122,7 @@ export function useAuth(): UseAuthReturn {
         setUser(authData.user);
 
         // Redirect to dashboard with locale
-        router.push(`/${locale}`);
+        router.push(`/${locale}/dashboard`);
       } catch (err: any) {
         const errorMessage = handleError(err);
         setError(errorMessage);

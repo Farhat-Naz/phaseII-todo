@@ -1,6 +1,5 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
 import { getTranslations } from 'next-intl/server';
 import { LoginForm } from '@/components/features/auth/LoginForm';
 import { Card } from '@/components/ui/Card';
