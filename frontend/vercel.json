@@ -4,5 +4,11 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["sin1"]
+  "regions": ["sin1"],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://backend-opggomt84-farhats-projects-27800a4d.vercel.app/api/:path*"
+    }
+  ]
 }
