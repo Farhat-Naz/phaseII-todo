@@ -106,6 +106,48 @@ async def health_check():
         "version": "1.0.0"
     }
 
+@app.get("/api/test", tags=["Health"])
+async def test_endpoint():
+    """Simple test endpoint to verify API is working without authentication."""
+    import os
+
+    # Check environment variables (without exposing sensitive values)
+    has_database_url = bool(os.getenv("DATABASE_URL"))
+    has_secret_key = bool(os.getenv("SECRET_KEY"))
+
+    return {
+        "status": "success",
+        "message": "API is working correctly",
+        "timestamp": "2026-01-15",
+        "environment": {
+            "database_url_configured": has_database_url,
+            "secret_key_configured": has_secret_key,
+            "python_version": os.sys.version.split()[0]
+        }
+    }
+
+@app.get("/api/db-test", tags=["Health"])
+async def database_test():
+    """Test database connection without authentication."""
+    try:
+        from app.database import test_connection
+        test_connection()
+        return {
+            "status": "success",
+            "message": "Database connection successful",
+            "database": "connected"
+        }
+    except Exception as e:
+        logger.error(f"Database test failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Database connection failed",
+                "error": str(e)
+            }
+        )
+
 # ============================================
 # API Routers - Import after app creation
 # ============================================
