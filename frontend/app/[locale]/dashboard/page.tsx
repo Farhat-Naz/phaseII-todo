@@ -4,7 +4,7 @@
 import { useRouter, useParams } from 'next/navigation';
 // import { useAuth } from '@/hooks/useAuth'; // Temporarily disabled for testing
 import { TodoList } from '@/components/features/todos/TodoList';
-import { LoadingSpinner } from '@/components/features/shared/LoadingSpinner';
+// import { LoadingSpinner } from '@/components/features/shared/LoadingSpinner'; // Temporarily disabled for testing
 import { Button } from '@/components/ui/Button';
 import { LanguageSwitcher } from '@/components/features/shared/LanguageSwitcher';
 
@@ -77,7 +77,7 @@ export default function DashboardPage() {
               </h1>
               <div className="hidden sm:block">
                 <span className={`text-sm text-gray-600 dark:text-gray-400 ${locale === 'ur' ? 'font-urdu' : ''}`}>
-                  {locale === 'ur' ? 'خوش آمدید' : 'Welcome'}, <span className="font-semibold text-gray-900 dark:text-white">{user.name}</span>
+                  {locale === 'ur' ? 'خوش آمدید' : 'Welcome'}, <span className="font-semibold text-gray-900 dark:text-white">Guest</span>
                 </span>
               </div>
             </div>
