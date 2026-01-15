@@ -27,12 +27,13 @@ export default function DashboardPage() {
 
   /**
    * Redirect to login if not authenticated
+   * TEMPORARILY DISABLED FOR TESTING
    */
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push(`/${locale}/login`);
-    }
-  }, [loading, user, router, locale]);
+  // useEffect(() => {
+  //   if (!loading && !user) {
+  //     router.push(`/${locale}/login`);
+  //   }
+  // }, [loading, user, router, locale]);
 
   /**
    * Handle logout
@@ -44,21 +45,23 @@ export default function DashboardPage() {
 
   /**
    * Show loading spinner while checking authentication
+   * TEMPORARILY DISABLED FOR TESTING
    */
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <LoadingSpinner size="lg" text="Loading dashboard..." />
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+  //       <LoadingSpinner size="lg" text="Loading dashboard..." />
+  //     </div>
+  //   );
+  // }
 
   /**
    * Don't render dashboard if not authenticated (will redirect)
+   * TEMPORARILY DISABLED FOR TESTING
    */
-  if (!user) {
-    return null;
-  }
+  // if (!user) {
+  //   return null;
+  // }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
