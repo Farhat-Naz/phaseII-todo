@@ -4,14 +4,14 @@
   "installCommand": "cd frontend && pnpm install",
   "framework": "nextjs",
   "functions": {
-    "api/index.py": {
-      "runtime": "python3.12"
+    "api/**/*.py": {
+      "runtime": "@vercel/python@4.3.0"
     }
   },
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     }
   ]
 }
