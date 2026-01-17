@@ -62,6 +62,25 @@ def get_engine():
     # Database URLs should never contain spaces, newlines, or tabs
     DATABASE_URL = "".join(DATABASE_URL.split())
 
+    # Strip surrounding quotes (single or double) that may be accidentally included
+    # This handles cases where users paste URLs like: 'postgresql://...' or "postgresql://..."
+    DATABASE_URL = DATABASE_URL.strip("'\"")
+
+    # Fix common typos in dialect prefix
+    # Handle cases like 'psql'postgresql:// or psql'postgresql:// or just psql
+    if "'psql'" in DATABASE_URL[:10] or DATABASE_URL.startswith("psql"):
+        logger.warning("Detected malformed DATABASE_URL with 'psql' prefix, fixing...")
+        # Remove the malformed prefix and any quotes around it
+        DATABASE_URL = DATABASE_URL.replace("'psql'", "", 1)
+        DATABASE_URL = DATABASE_URL.replace("psql'", "", 1)
+        DATABASE_URL = DATABASE_URL.replace("psql", "", 1)
+        DATABASE_URL = DATABASE_URL.strip("'\"")
+
+    # Ensure PostgreSQL URLs use the psycopg dialect
+    if DATABASE_URL.startswith("postgresql://"):
+        logger.info("Converting postgresql:// to postgresql+psycopg:// for psycopg3 compatibility")
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
     # Detect database type (SQLite vs PostgreSQL)
     is_sqlite = DATABASE_URL.startswith("sqlite")
 

@@ -15,6 +15,23 @@
 5. Render will auto-detect `render.yaml` configuration
 
 ### Step 3: Configure Environment Variables
+
+**⚠️ CRITICAL: DATABASE_URL Format**
+
+When pasting `DATABASE_URL`, do **NOT** include quotes. Paste the raw URL only.
+
+✅ **CORRECT** (no quotes):
+```
+postgresql+psycopg://neondb_owner:npg_ZAGN4xaUk2mh@ep-red-unit-a13i3o3z-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+```
+
+❌ **WRONG** (has quotes - will fail):
+```
+'postgresql+psycopg://...'
+"postgresql+psycopg://..."
+'psql'postgresql://...
+```
+
 Render will prompt you to add these required environment variables:
 
 ```
@@ -75,9 +92,23 @@ After backend is deployed, update frontend environment variable:
 - Verify Python version in `runtime.txt` (3.11.0)
 
 ### Database Connection Error
-- Verify `DATABASE_URL` is correctly set
+
+**Error:** `Could not parse SQLAlchemy URL from string 'psql'postgresql://...'`
+
+**Cause:** DATABASE_URL has quotes or typos in Render environment variables
+
+**Solution:**
+1. Go to Render Dashboard → Environment tab
+2. Find `DATABASE_URL` variable
+3. Click "Edit" and remove ALL quotes (`'` or `"`)
+4. Ensure it starts with `postgresql+psycopg://` (not `'psql'` or `psql`)
+5. Save changes
+6. Trigger manual deploy or wait for auto-deploy
+
+**Other checks:**
+- Verify `DATABASE_URL` is correctly set without quotes
 - Ensure Neon database is active (not paused)
-- Check database connection string format
+- Check database connection string includes `?sslmode=require`
 
 ### CORS Errors
 - Verify `CORS_ORIGINS` includes your Vercel frontend URL
