@@ -50,6 +50,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.claude/settings.local.json
 
 # Temporary files
 temp_data.json
