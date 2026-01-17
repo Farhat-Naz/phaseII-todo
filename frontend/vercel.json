@@ -8,7 +8,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://backend-ewiwl5r7t-farhats-projects-27800a4d.vercel.app/api/:path*"
+      "destination": "https://phaseii-todo-backend.onrender.com/api/:path*"
     }
   ]
 }
