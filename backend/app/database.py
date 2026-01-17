@@ -58,6 +58,10 @@ def get_engine():
             "Please set it to your Neon PostgreSQL connection string."
         )
 
+    # Strip all whitespace and newlines (common copy-paste issue from Render/Neon dashboards)
+    # Database URLs should never contain spaces, newlines, or tabs
+    DATABASE_URL = "".join(DATABASE_URL.split())
+
     # Detect database type (SQLite vs PostgreSQL)
     is_sqlite = DATABASE_URL.startswith("sqlite")
 
