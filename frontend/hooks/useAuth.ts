@@ -44,7 +44,7 @@ export function useAuth(): UseAuthReturn {
         return;
       }
 
-      const userData = await api.get<User>('/auth/me');
+      const userData = await api.get<User>('/api/auth/me');
       setUser(userData);
     } catch (err) {
       // Token might be invalid or expired
@@ -72,7 +72,7 @@ export function useAuth(): UseAuthReturn {
 
       try {
         // Register user
-        await api.post<User>('/auth/register', data, false);
+        await api.post<User>('/api/auth/register', data, false);
 
         // Now login to get token
         await login({ email: data.email, password: data.password });
@@ -101,7 +101,7 @@ export function useAuth(): UseAuthReturn {
         formData.append('username', data.email);
         formData.append('password', data.password);
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',

@@ -13,6 +13,6 @@ export default createMiddleware({
 });
 
 export const config = {
-  // Match only localized pathnames, NOT root
-  matcher: ['/(ur|en)/:path*'],
+  // Match all pathnames including root
+  matcher: ['/', '/(ur|en)/:path*'],
 };

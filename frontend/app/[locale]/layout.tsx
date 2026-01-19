@@ -25,7 +25,11 @@ export const metadata: Metadata = {
   description: 'A modern, full-stack todo application with voice input support and multilingual features',
   keywords: ['todo', 'task manager', 'productivity', 'voice input', 'urdu', 'multilingual'],
   authors: [{ name: 'Todo App Team' }],
-  viewport: 'width=device-width, initial-scale=1',
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export function generateStaticParams() {

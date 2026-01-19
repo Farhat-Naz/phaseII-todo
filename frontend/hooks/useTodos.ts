@@ -57,7 +57,7 @@ export function useTodos(): UseTodosReturn {
     try {
       // Build query parameters based on filter
       const queryParams = filter ? `?priority=${filter}` : '';
-      const data = await api.get<TodoListResponse>(`/todos${queryParams}`);
+      const data = await api.get<TodoListResponse>(`/api/todos${queryParams}`);
       setTodos(data);
     } catch (err) {
       const errorMessage = handleError(err);
@@ -91,7 +91,7 @@ export function useTodos(): UseTodosReturn {
 
     try {
       // Make API request
-      const newTodo = await api.post<Todo>('/todos', data);
+      const newTodo = await api.post<Todo>('/api/todos', data);
 
       // Replace optimistic todo with real todo from server
       setTodos(prev =>
@@ -139,7 +139,7 @@ export function useTodos(): UseTodosReturn {
 
     try {
       // Make API request
-      const updatedTodo = await api.patch<Todo>(`/todos/${id}`, data);
+      const updatedTodo = await api.patch<Todo>(`/api/todos/${id}`, data);
 
       // Update with server response
       setTodos(prev =>
@@ -187,7 +187,7 @@ export function useTodos(): UseTodosReturn {
 
     try {
       // Make API request
-      await api.delete(`/todos/${id}`);
+      await api.delete(`/api/todos/${id}`);
       return true;
     } catch (err) {
       // Rollback: Restore deleted todo on error
