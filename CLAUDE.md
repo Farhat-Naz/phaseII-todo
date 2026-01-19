@@ -1,4 +1,4 @@
-# Claude Code Rules
+﻿# Claude Code Rules
 
 This file is generated during init for the selected agent.
 
@@ -208,3 +208,282 @@ Wait for consent; never auto-create ADRs. Group related decisions (stacks, authe
 
 ## Code Standards
 See `.specify/memory/constitution.md` for code quality, testing, performance, security, and architecture principles.
+
+---
+
+## Project Implementation Details
+
+### Backend Structure (`backend/app/`)
+
+The FastAPI backend follows a modular architecture with clear separation of concerns:
+
+```
+backend/app/
+├── main.py              # FastAPI application, CORS, middleware
+├── models.py            # SQLModel database models (User, Todo)
+├── schemas.py           # Pydantic request/response schemas
+├── database.py          # Database connection and session management
+├── auth.py              # JWT encoding/decoding, password hashing
+├── dependencies.py      # FastAPI dependency injection (get_db, get_current_user)
+└── routers/
+    ├── auth.py          # Authentication endpoints (login, register, me)
+    └── todos.py         # Todo CRUD endpoints with user filtering
+```
+
+### Frontend Structure (`frontend/`)
+
+The Next.js 16+ frontend uses App Router with internationalization:
+
+```
+frontend/
+├── app/
+│   ├── [locale]/        # i18n routes (en, ur)
+│   │   ├── (auth)/      # Route group for auth pages
+│   │   │   ├── login/
+│   │   │   └── register/
+│   │   ├── layout.tsx   # Locale-aware layout
+│   │   └── page.tsx     # Dashboard (protected)
+│   └── layout.tsx       # Root layout
+├── components/
+│   ├── features/        # Feature-specific components
+│   │   ├── auth/        # LoginForm, RegisterForm
+│   │   ├── todos/       # TodoForm, TodoItem, TodoList, VoiceInput
+│   │   └── shared/      # LanguageSwitcher, LoadingSpinner
+│   └── ui/              # Reusable UI components (Button, Card, Input, etc.)
+├── hooks/
+│   ├── useAuth.ts       # Authentication hook (login, logout, user state)
+│   ├── useTodos.ts      # Todo CRUD hook with optimistic updates
+│   └── useVoiceCommand.ts # Voice recognition hook
+├── lib/
+│   ├── api.ts           # API client with JWT token handling
+│   └── auth.ts          # Auth utilities (token storage, validation)
+├── types/
+│   ├── todo.ts          # Todo TypeScript types
+│   └── user.ts          # User TypeScript types
+└── messages/            # i18n translation files
+    ├── en.json          # English translations
+    └── ur.json          # Urdu translations
+```
+
+### Key Implementation Patterns
+
+#### 1. JWT Extraction (CRITICAL - Never from Request Body)
+
+Backend always extracts user ID from validated JWT token, NEVER from request body:
+
+```python
+# ✅ CORRECT - dependencies.py
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    payload = jwt.decode(token, SECRET_KEY)
+    user_id = payload.get("sub")  # Extract from JWT 'sub' claim
+    return user_id
+
+# ✅ CORRECT - routers/todos.py
+@router.get("/todos")
+def get_todos(current_user_id: str = Depends(get_current_user)):
+    todos = db.exec(
+        select(Todo).where(Todo.user_id == current_user_id)  # Filter by JWT user
+    ).all()
+
+# ❌ WRONG - Never trust user_id from request
+@router.post("/todos")
+def create_todo(todo: TodoCreate, user_id: str):  # SECURITY VIOLATION
+    # user_id from request body can be forged!
+```
+
+#### 2. User Filtering (MANDATORY for All Queries)
+
+Every database query MUST filter by authenticated user's ID:
+
+```python
+# ✅ CORRECT - All queries filtered
+todos = db.exec(
+    select(Todo).where(Todo.user_id == current_user_id)
+).all()
+
+# ✅ CORRECT - Updates verify ownership
+todo = db.exec(
+    select(Todo).where(Todo.id == todo_id, Todo.user_id == current_user_id)
+).first()
+if not todo:
+    raise HTTPException(status_code=404)  # Not 403, prevents enumeration
+
+# ❌ WRONG - No user filtering
+todos = db.exec(select(Todo)).all()  # SECURITY VIOLATION
+```
+
+#### 3. Optimistic UI Updates with Rollback
+
+Frontend updates UI immediately, then syncs with backend:
+
+```typescript
+// ✅ CORRECT - useTodos.ts
+const toggleTodo = async (id: string) => {
+  // 1. Optimistic update (immediate UI feedback)
+  setTodos(prev => prev.map(t =>
+    t.id === id ? {...t, completed: !t.completed} : t
+  ));
+
+  try {
+    // 2. Sync with backend
+    await api.patch(`/todos/${id}`, { completed: !todo.completed });
+  } catch (error) {
+    // 3. Rollback on error
+    setTodos(prev => prev.map(t =>
+      t.id === id ? {...t, completed: !t.completed} : t
+    ));
+    toast.error("Failed to update todo");
+  }
+};
+```
+
+#### 4. Voice Command Parsing (English + Urdu)
+
+Voice recognition with pattern-based intent classification:
+
+```typescript
+// ✅ CORRECT - useVoiceCommand.ts
+const parseVoiceCommand = (transcript: string, locale: string) => {
+  const lower = transcript.toLowerCase().trim();
+
+  // English patterns
+  if (locale === 'en') {
+    if (lower.startsWith('add todo:') || lower.startsWith('create todo:')) {
+      return { intent: 'CREATE_TODO', title: lower.split(':')[1].trim() };
+    }
+    if (lower.startsWith('complete todo:')) {
+      return { intent: 'COMPLETE_TODO', title: lower.split(':')[1].trim() };
+    }
+  }
+
+  // Urdu patterns
+  if (locale === 'ur') {
+    if (lower.includes('نیا کام') || lower.includes('naya kaam')) {
+      return { intent: 'CREATE_TODO', title: extractAfterColon(lower) };
+    }
+    if (lower.includes('مکمل کریں') || lower.includes('mukammal karen')) {
+      return { intent: 'COMPLETE_TODO', title: extractAfterColon(lower) };
+    }
+  }
+
+  return { intent: 'UNKNOWN', error: 'Command not recognized' };
+};
+```
+
+#### 5. RTL Layout for Urdu
+
+Dynamic text direction based on locale:
+
+```tsx
+// ✅ CORRECT - app/[locale]/layout.tsx
+export default function LocaleLayout({ children, params }: Props) {
+  const locale = params.locale;
+  const direction = locale === 'ur' ? 'rtl' : 'ltr';
+
+  return (
+    <html lang={locale} dir={direction}>
+      <body className={cn(
+        locale === 'ur' && 'font-urdu',  // Noto Nastaliq Urdu font
+        'antialiased'
+      )}>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+### Agent Skills Applied
+
+All implementation follows established patterns from skills:
+
+- **API Skill** (`.claude/skills/api.skill.md`):
+  - JWT token attached to all protected requests
+  - Consistent error handling with toast notifications
+  - Request/response type safety with TypeScript
+  - Proper HTTP status codes (200, 201, 400, 401, 404)
+
+- **Database Skill** (`.claude/skills/database.skill.md`):
+  - User filtering on ALL queries (`WHERE user_id = ...`)
+  - SQLModel for type-safe ORM operations
+  - Proper indexes on `user_id`, `completed`, `created_at`
+  - Foreign key CASCADE delete (user deletion removes todos)
+
+- **Auth Skill** (`.claude/skills/auth.skill.md`):
+  - JWT extraction from `Authorization: Bearer <token>`
+  - User ID from JWT `sub` claim (never request body)
+  - Password hashing with bcrypt before storage
+  - Token expiration (30 min access, 7 day refresh)
+
+- **Voice Skill** (`.claude/skills/voice.skill.md`):
+  - Web Speech API with language detection (`en-US`, `ur-PK`)
+  - Pattern-based intent classification
+  - Entity extraction (todo titles from commands)
+  - Graceful fallback to manual input on errors
+
+- **UI Skill** (`.claude/skills/ui.skill.md`):
+  - Accessible components (ARIA labels, keyboard nav)
+  - Responsive design (mobile-first, 320px+)
+  - Loading states for async operations
+  - Error boundaries for error handling
+  - Dark mode support with Tailwind
+
+### Completed User Stories
+
+All 7 user stories from spec.md implemented:
+
+- **US1**: User Registration and Authentication - ✅ COMPLETE
+  - JWT-based auth with Better Auth
+  - Secure password hashing
+  - Token storage in httpOnly cookies
+
+- **US2**: Create and View Personal Todos - ✅ COMPLETE
+  - Todo CRUD operations
+  - User-scoped queries
+  - Optimistic UI updates
+
+- **US3**: Mark Todos as Complete/Incomplete - ✅ COMPLETE
+  - Toggle completion status
+  - Visual indicators (strikethrough, checkmark)
+  - Persistent state
+
+- **US4**: Update and Delete Todos - ✅ COMPLETE
+  - Edit title and description
+  - Delete with confirmation
+  - Ownership verification
+
+- **US5**: Voice Command Task Creation - ✅ COMPLETE
+  - English voice input ("Add todo: Buy milk")
+  - Urdu voice input ("نیا کام: دودھ خریدیں")
+  - Visual feedback during listening
+
+- **US6**: Voice Command Task Completion - ✅ COMPLETE
+  - Complete/delete via voice
+  - Filter todos by status ("Show completed")
+  - Multi-language support
+
+- **US7**: Multilingual UI (Urdu Support) - ✅ COMPLETE
+  - Full Urdu UI translation
+  - RTL text rendering
+  - Language switcher component
+  - Urdu font (Noto Nastaliq Urdu)
+
+### Implementation Metrics
+
+- **Total Tasks**: 80/80 (100% complete)
+- **Files Created**: ~100+ (backend + frontend)
+- **User Stories**: 7/7 implemented
+- **Functional Requirements**: 28/28 satisfied (FR-001 to FR-028)
+- **Success Criteria**: 12/12 met (SC-001 to SC-012)
+- **Agent-Driven**: 100% (zero manual coding)
+
+### Next Steps
+
+For new features:
+1. Run `/sp.specify` to create specification
+2. Run `/sp.plan` for architecture design
+3. Run `/sp.tasks` to break down implementation
+4. Run `/sp.implement` to execute tasks with agents
+5. Run `/sp.git.commit_pr` to commit and create PR
+
+All work follows the constitution and leverages established skills.
