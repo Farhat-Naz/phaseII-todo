@@ -4,11 +4,5 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["sin1"],
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://phaseii-todo-backend.onrender.com/api/:path*"
-    }
-  ]
+  "regions": ["sin1"]
 }
